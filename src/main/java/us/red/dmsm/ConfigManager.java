@@ -6,7 +6,6 @@ import ninja.leaping.configurate.hocon.HoconConfigurationLoader;
 import org.apache.commons.lang3.ObjectUtils;
 import org.dynmap.markers.MarkerAPI;
 import org.slf4j.Logger;
-import org.spongepowered.api.Sponge;
 import org.spongepowered.api.asset.Asset;
 import org.spongepowered.api.plugin.PluginContainer;
 
@@ -23,19 +22,20 @@ import java.util.Optional;
 public class ConfigManager {
 
     public static final String DEFAULT_CONFIG_FILE_NAME = "default.conf";
-    private ArrayList<SignMarkerSet> signMarkerSets = new ArrayList<>();
+    private final ArrayList<SignMarkerSet> signMarkerSets = new ArrayList<>();
 
     /**
      * Creates a new config loader
      * Will use default config locations
+     *
      * @param configPath A Path to a config file
-     * @param markerAPI A reference to the dynmap MarkerAPI
-     * @param logger A Logger for logging purposes
+     * @param markerAPI  A reference to the dynmap MarkerAPI
+     * @param logger     A Logger for logging purposes
      */
     public ConfigManager(Path configPath, MarkerAPI markerAPI, Logger logger) {
         // create a default config if none exists
         if (Files.notExists(configPath)) {
-            PluginContainer pluginContainer = Sponge.getPluginManager().getPlugin("dmsm").get();
+            PluginContainer pluginContainer = DynmapSignMarker.dmsm;
             Optional<Asset> optAsset = pluginContainer.getAsset(DEFAULT_CONFIG_FILE_NAME);
             if (optAsset.isPresent()) {
                 Asset defaultConfigFile = optAsset.get();
@@ -75,13 +75,11 @@ public class ConfigManager {
                             icon
                     ));
                     logger.info("Loaded a SignMarkerSet with id " + id);
-                }
-                else {
+                } else {
                     logger.error("Error loading SignMarkerSet. Check config syntax");
                 }
             }
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             logger.error("Could not load data from its config file");
         }
 
@@ -90,6 +88,7 @@ public class ConfigManager {
 
     /**
      * Gets all user-defined SignMarkerSets
+     *
      * @return A Set of all user-defined SignMarkerSets
      */
     public List<SignMarkerSet> getSignMarkerSets() {

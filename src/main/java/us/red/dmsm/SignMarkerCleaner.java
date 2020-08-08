@@ -2,7 +2,6 @@ package us.red.dmsm;
 
 import org.dynmap.markers.Marker;
 import org.slf4j.Logger;
-
 import org.spongepowered.api.Sponge;
 import org.spongepowered.api.block.tileentity.Sign;
 import org.spongepowered.api.block.tileentity.TileEntity;
@@ -18,6 +17,7 @@ import java.util.Optional;
 public class SignMarkerCleaner implements Runnable {
     private final List<SignMarkerSet> signMarkerSets;
     private final Logger logger;
+
     public SignMarkerCleaner(List<SignMarkerSet> signMarkerSets, Logger logger) {
         this.signMarkerSets = signMarkerSets;
         this.logger = logger;
@@ -49,14 +49,12 @@ public class SignMarkerCleaner implements Runnable {
                             marker.deleteMarker();
                             count++;
                         }
-                    }
-                    else {
+                    } else {
                         // not a sign! delete!
                         marker.deleteMarker();
                         count++;
                     }
-                }
-                else {
+                } else {
                     // no tile entity! delete!
                     marker.deleteMarker();
                     count++;

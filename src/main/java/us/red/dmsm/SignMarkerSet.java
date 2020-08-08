@@ -9,17 +9,18 @@ import org.dynmap.markers.MarkerSet;
  */
 public class SignMarkerSet {
     // What needs to be on a sign for it to create a marker of this type? e.g. [plot]
-    private String keyword;
+    private final String keyword;
     // icon for use on Markers
-    private MarkerIcon icon;
+    private final MarkerIcon icon;
     // underlying MarkerSet that this SignMarkerSet represents
     private MarkerSet markerSet;
 
     /**
      * Creates a new SignMarkerSet
-     * @param keyword Keyword to look for on signs. e.g. [plot]
-     * @param markerSetID Unique ID of the underlying MarkerSet
-     * @param markerSetLabel Display label of the underlying MarkerSet
+     *
+     * @param keyword         Keyword to look for on signs. e.g. [plot]
+     * @param markerSetID     Unique ID of the underlying MarkerSet
+     * @param markerSetLabel  Display label of the underlying MarkerSet
      * @param markerSetIconID ID of the icon the underlying MarkerSet will use
      */
     public SignMarkerSet(
@@ -41,6 +42,7 @@ public class SignMarkerSet {
 
     /**
      * Get the keyword String of this SignMarkerSet
+     *
      * @return The keyword String of this SignMarkerSet
      */
     public String getKeyword() {
@@ -49,6 +51,7 @@ public class SignMarkerSet {
 
     /**
      * Get the underlying MarkerSet of this SignMarkerSet
+     *
      * @return The underlying MarkerSet of this SignMarkerSet
      */
     public MarkerSet getMarkerSet() {
@@ -57,6 +60,7 @@ public class SignMarkerSet {
 
     /**
      * Gets the MarkerIcon associated with this SignMarkerSet
+     *
      * @return A MarkerIcon associated with this SignMarkerSet
      */
     public MarkerIcon getIcon() {

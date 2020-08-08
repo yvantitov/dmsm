@@ -43,7 +43,7 @@ import java.util.concurrent.TimeUnit;
         id = "dmsm",
         name = "DynmapSignMarker",
         description = "Make dynmap markers with signs.",
-        url = "https://westeroscraft.com/",
+        url = "https://github.com/yvantitov/dmsm",
         authors = {
                 "he_who_is_red"
         },
@@ -51,15 +51,15 @@ import java.util.concurrent.TimeUnit;
                 @Dependency(id = "dynmap")
         }
 )
-
 public class DynmapSignMarker {
-
     @Inject
     private Logger logger;
 
     @Inject
     @DefaultConfig(sharedRoot = true)
     private Path configPath;
+
+    public static PluginContainer dmsm;
 
     private MarkerAPI markerAPI;
     private ConfigManager configManager;
@@ -78,6 +78,8 @@ public class DynmapSignMarker {
                 markerAPI = dynmapCommonAPI.getMarkerAPI();
                 // load our config
                 configManager = new ConfigManager(configPath, markerAPI, logger);
+                // get a PluginContainer for this plugin
+                dmsm = Sponge.getPluginManager().getPlugin("dmsm").get();
                 // activate
                 activate();
             }
@@ -86,14 +88,13 @@ public class DynmapSignMarker {
 
     // cool stuff activated
     private void activate() {
-        logger.info("Successfully activated");
+        logger.info("Running...");
 
         // build a cleanup task
-        PluginContainer plugin = Sponge.getPluginManager().getPlugin("dmsm").get();
         Task.Builder taskBuilder = Task.builder();
         taskBuilder.interval(CLEANUP_INTERVAL, TimeUnit.MINUTES);
         taskBuilder.execute(new SignMarkerCleaner(configManager.getSignMarkerSets(), logger));
-        taskBuilder.submit(plugin);
+        taskBuilder.submit(dmsm);
         logger.info("Started cleanup routine");
     }
 
@@ -133,9 +134,9 @@ public class DynmapSignMarker {
                         .color(TextColors.RED).build());
                 logger.info(
                         "Unauthorized player "
-                        + player.getName()
-                        + " attempted to create a sign marker of type "
-                        + markerSet.getMarkerSetID()
+                                + player.getName()
+                                + " attempted to create a sign marker of type "
+                                + markerSet.getMarkerSetID()
                 );
                 event.setCancelled(true);
                 return;
@@ -186,8 +187,7 @@ public class DynmapSignMarker {
                         .quantity(50)
                         .build();
                 player.spawnParticles(effect, effectPos);
-            }
-            else {
+            } else {
                 player.sendMessage(Text.builder("Could not create a sign marker")
                         .color(TextColors.RED).build());
                 logger.error(player.getName() + " ran into an error creating a sign marker");
@@ -228,23 +228,22 @@ public class DynmapSignMarker {
                             );
                             logger.info(
                                     "Player "
-                                    + player.getName()
-                                    + " removed a "
-                                    + lbl
-                                    + " sign marker at "
-                                    + markerPos.toString()
+                                            + player.getName()
+                                            + " removed a "
+                                            + lbl
+                                            + " sign marker at "
+                                            + markerPos.toString()
                             );
                             // play a fun sound
                             player.playSound(SoundTypes.BLOCK_NOTE_BASS, markerPos.toDouble(), 1.3);
-                        }
-                        else {
+                        } else {
                             String msg = "You do not have permission to remove " + lbl + " sign markers";
                             player.sendMessage(Text.builder(msg).color(TextColors.RED).build());
                             logger.error(
                                     "Unauthorized player "
-                                    + player.getName()
-                                    + " attempted to remove a marker at "
-                                    + markerPos.toString()
+                                            + player.getName()
+                                            + " attempted to remove a marker at "
+                                            + markerPos.toString()
                             );
                             event.setCancelled(true);
                         }
