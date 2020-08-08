@@ -183,7 +183,7 @@ public class DynmapSignMarker {
                 Vector3d effectPos = signLocation.getPosition().add(0.5, 0.5, 0.5);
                 player.playSound(SoundTypes.BLOCK_NOTE_GUITAR, effectPos, 1.3);
                 ParticleEffect effect = ParticleEffect.builder()
-                        .type(ParticleTypes.FIREWORKS)
+                        .type(ParticleTypes.EXPLOSION)
                         .quantity(50)
                         .build();
                 player.spawnParticles(effect, effectPos);
@@ -200,12 +200,6 @@ public class DynmapSignMarker {
      */
     @Listener
     public void onBreakBlockEvent(ChangeBlockEvent.Break event) {
-        // if the event is not player caused, we do nothing
-        Optional<Player> optPlayer = event.getCause().first(Player.class);
-        if (!optPlayer.isPresent()) {
-            return;
-        }
-        Player player = optPlayer.get();
         // check if this block is related to a marker
         for (Transaction<BlockSnapshot> transaction : event.getTransactions()) {
             Vector3i blockPos = transaction.getFinal().getPosition();
@@ -220,31 +214,40 @@ public class DynmapSignMarker {
                     // if we find a marker
                     if (blockPos.equals(markerPos)) {
                         String lbl = markerSet.getMarkerSetLabel();
-                        if (player.hasPermission("dmsm." + markerSet.getMarkerSetID())) {
-                            marker.deleteMarker();
-                            player.sendMessage(Text.builder("Successfully removed sign marker")
-                                    .color(TextColors.GREEN)
-                                    .build()
-                            );
-                            logger.info(
-                                    "Player "
-                                            + player.getName()
-                                            + " removed a "
-                                            + lbl
-                                            + " sign marker at "
-                                            + markerPos.toString()
-                            );
-                            // play a fun sound
-                            player.playSound(SoundTypes.BLOCK_NOTE_BASS, markerPos.toDouble(), 1.3);
+                        // check if a player did it
+                        Optional<Player> optPlayer = event.getCause().first(Player.class);
+                        if (optPlayer.isPresent()) {
+                            Player player = optPlayer.get();
+                            if (player.hasPermission("dmsm." + markerSet.getMarkerSetID())) {
+                                marker.deleteMarker();
+                                player.sendMessage(Text.builder("Successfully removed sign marker")
+                                        .color(TextColors.GREEN)
+                                        .build()
+                                );
+                                logger.info(
+                                        "Player "
+                                                + player.getName()
+                                                + " removed a "
+                                                + lbl
+                                                + " sign marker at "
+                                                + markerPos.toString()
+                                );
+                                // play a fun sound
+                                player.playSound(SoundTypes.BLOCK_NOTE_BASS, markerPos.toDouble(), 1.3);
+                            } else {
+                                String msg = "You do not have permission to remove " + lbl + " sign markers";
+                                player.sendMessage(Text.builder(msg).color(TextColors.RED).build());
+                                logger.info(
+                                        "Unauthorized player "
+                                                + player.getName()
+                                                + " attempted to remove a marker at "
+                                                + markerPos.toString()
+                                );
+                                event.setCancelled(true);
+                            }
                         } else {
-                            String msg = "You do not have permission to remove " + lbl + " sign markers";
-                            player.sendMessage(Text.builder(msg).color(TextColors.RED).build());
-                            logger.error(
-                                    "Unauthorized player "
-                                            + player.getName()
-                                            + " attempted to remove a marker at "
-                                            + markerPos.toString()
-                            );
+                            // only players can destroy signs
+                            logger.info(lbl + " sign marker at " + markerPos.toString() + " avoided destruction");
                             event.setCancelled(true);
                         }
                     }
