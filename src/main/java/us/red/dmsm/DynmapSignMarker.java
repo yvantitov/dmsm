@@ -3,18 +3,17 @@ package us.red.dmsm;
 import com.flowpowered.math.vector.Vector3d;
 import com.flowpowered.math.vector.Vector3i;
 import com.google.inject.Inject;
-import org.slf4j.Logger;
-import java.util.Optional;
-
 import org.dynmap.DynmapCommonAPI;
 import org.dynmap.DynmapCommonAPIListener;
 import org.dynmap.markers.Marker;
 import org.dynmap.markers.MarkerAPI;
 import org.dynmap.markers.MarkerIcon;
 import org.dynmap.markers.MarkerSet;
-
+import org.slf4j.Logger;
+import org.spongepowered.api.Sponge;
 import org.spongepowered.api.block.BlockSnapshot;
 import org.spongepowered.api.block.tileentity.Sign;
+import org.spongepowered.api.config.DefaultConfig;
 import org.spongepowered.api.data.Transaction;
 import org.spongepowered.api.data.manipulator.mutable.tileentity.SignData;
 import org.spongepowered.api.data.value.mutable.ListValue;
@@ -28,11 +27,17 @@ import org.spongepowered.api.event.block.tileentity.ChangeSignEvent;
 import org.spongepowered.api.event.game.state.GameStartedServerEvent;
 import org.spongepowered.api.plugin.Dependency;
 import org.spongepowered.api.plugin.Plugin;
+import org.spongepowered.api.plugin.PluginContainer;
+import org.spongepowered.api.scheduler.Task;
 import org.spongepowered.api.text.Text;
 import org.spongepowered.api.text.format.TextColors;
 import org.spongepowered.api.text.format.TextStyles;
 import org.spongepowered.api.world.Location;
 import org.spongepowered.api.world.World;
+
+import java.nio.file.Path;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 @Plugin(
         id = "dmsm",
@@ -52,50 +57,44 @@ public class DynmapSignMarker {
     @Inject
     private Logger logger;
 
-    private MarkerAPI markerAPI;
+    @Inject
+    @DefaultConfig(sharedRoot = true)
+    private Path configPath;
 
-    // TODO: Load this from config
-    public static final String OPEN_PLOT_MARKER_SET_ID = "open_plots";
-    public static final String OPEN_PLOT_MARKER_SET_LABEL = "Open Plots";
-    public static final String OPEN_PLOT_MARKER_ICON_ID = "greenflag";
-    private MarkerSet openPlotMarkerSet;
+    private MarkerAPI markerAPI;
+    private ConfigManager configManager;
+
+    // interval in minutes between each run of the marker cleanup task
+    public static final long CLEANUP_INTERVAL = 5;
 
     @Listener
     public void onServerStart(GameStartedServerEvent event) {
-        logger.info("DynmapSignMarker is waiting for Dynmap API activation");
+        logger.info("Waiting for Dynmap API activation");
         // register ourselves with the dynmap bureau of registered mods
         DynmapCommonAPIListener.register(new DynmapCommonAPIListener() {
             @Override
             public void apiEnabled(DynmapCommonAPI dynmapCommonAPI) {
                 // grab the fun and cuddly markerAPI
                 markerAPI = dynmapCommonAPI.getMarkerAPI();
-                // get or create our fun marker set
-                openPlotMarkerSet = markerAPI.getMarkerSet(OPEN_PLOT_MARKER_SET_ID);
-                if (openPlotMarkerSet == null) {
-                    // if it doesn't exist, we make it
-                    openPlotMarkerSet = markerAPI.createMarkerSet(
-                            OPEN_PLOT_MARKER_SET_ID,
-                            OPEN_PLOT_MARKER_SET_LABEL,
-                            null,
-                            false // not persistent - we will do that ourselves
-                    );
-                }
-                // if we now have a valid MarkerSet, we can continue. Otherwise fail
-                if (openPlotMarkerSet != null) {
-                    activate();
-                }
-                else {
-                    logger.error("DynmapSignMarker could not load a MarkerSet!");
-                    logger.error("This is very bad!");
-                }
+                // load our config
+                configManager = new ConfigManager(configPath, markerAPI, logger);
+                // activate
+                activate();
             }
         });
     }
 
     // cool stuff activated
     private void activate() {
-        logger.info("DynmapSignMarker has been successfully activated");
-        // do sync stuff
+        logger.info("Successfully activated");
+
+        // build a cleanup task
+        PluginContainer plugin = Sponge.getPluginManager().getPlugin("dmsm").get();
+        Task.Builder taskBuilder = Task.builder();
+        taskBuilder.interval(CLEANUP_INTERVAL, TimeUnit.MINUTES);
+        taskBuilder.execute(new SignMarkerCleaner(configManager.getSignMarkerSets(), logger));
+        taskBuilder.submit(plugin);
+        logger.info("Started cleanup routine");
     }
 
     /*
@@ -103,78 +102,95 @@ public class DynmapSignMarker {
      */
     @Listener
     public void onChangeSignEvent(ChangeSignEvent event) {
-        if (openPlotMarkerSet != null) {
-            Optional<Player> optPlayer = event.getCause().first(Player.class);
-            // we only do anything if a player caused the event
-            if (optPlayer.isPresent()) {
-                Player player = optPlayer.get();
-                Sign sign = event.getTargetTile();
-                SignData signData = event.getText();
+        Optional<Player> optPlayer = event.getCause().first(Player.class);
+        // we only do anything if a player caused the event
+        if (optPlayer.isPresent()) {
+            Player player = optPlayer.get();
+            Sign sign = event.getTargetTile();
+            SignData signData = event.getText();
 
-                // check if the sign is formatted to request a plot
-                // TODO: Make this support different kinds of sign markers
-                ListValue<Text> signText = signData.getListValue();
-                // continue if the first line is [plot]
-                if (signText.get(0).toPlain().equals("[plot]")) {
-                    // ensure the player has perms
-                    if (!player.hasPermission("dmsm.createmarker.plot")) {
-                        player.sendMessage(Text.builder("You do not have permission to create plot markers")
-                        .color(TextColors.RED).build());
-                        logger.info("Unauthorized player " + player.getName() + " attempted to create a marker");
-                        event.setCancelled(true);
-                        return;
-                    }
+            // get the first line of text on the sign
+            ListValue<Text> signText = signData.getListValue();
+            String keyword = signText.get(0).toPlain();
 
-                    // turn the rest of the text into a plot description
-                    String markerDesc = "";
-                    for (int i = 1; i < signText.size(); i++) {
-                        markerDesc = markerDesc.concat(signText.get(i).toPlain() + " ");
-                    }
-
-                    Location<World> signLocation = sign.getLocation();
-                    World world = signLocation.getExtent();
-
-                    MarkerIcon icon = markerAPI.getMarkerIcon(OPEN_PLOT_MARKER_ICON_ID);
-
-                    // create the marker
-                    Marker createdMarker = openPlotMarkerSet.createMarker(
-                            null,
-                            markerDesc,
-                            world.getName(),
-                            signLocation.getX(),
-                            signLocation.getY(),
-                            signLocation.getZ(),
-                            icon,
-                            false
-                    );
-
-                    if (createdMarker != null) {
-                        player.sendMessage(Text.builder("Plot marker created").color(TextColors.GREEN).build());
-                        String markerPosAsString = signLocation.getPosition().toString();
-                        logger.info(player.getName() + " created a plot marker at " + markerPosAsString);
-                        // make the sign fancy-colored
-                        for (int i = 0; i < signText.size(); i++) {
-                            Text newText = signText.get(i).toBuilder()
-                                    .style(TextStyles.BOLD)
-                                    .color(TextColors.DARK_RED)
-                                    .build();
-                            signData.setElement(i, newText);
-                        }
-                        // play some funky fresh effects
-                        Vector3d effectPos = signLocation.getPosition().add(0.5, 0.5, 0.5);
-                        player.playSound(SoundTypes.BLOCK_NOTE_GUITAR, effectPos,1.3);
-                        ParticleEffect effect = ParticleEffect.builder()
-                                .type(ParticleTypes.FIREWORKS)
-                                .quantity(50)
-                                .build();
-                        player.spawnParticles(effect, effectPos);
-                    }
-                    else {
-                        player.sendMessage(Text.builder("Could not create a plot marker")
-                        .color(TextColors.RED).build());
-                        logger.error(player.getName() + " experienced an error creating a marker");
-                    }
+            // try to match it to a SignMarkerSet
+            MarkerSet markerSet = null;
+            MarkerIcon markerIcon = null;
+            for (SignMarkerSet s : configManager.getSignMarkerSets()) {
+                if (s.getKeyword().equals(keyword)) {
+                    markerSet = s.getMarkerSet();
+                    markerIcon = s.getIcon();
                 }
+            }
+            if (markerSet == null) {
+                // if the keyword doesn't match a valid marker set, we simply ignore it
+                return;
+            }
+
+            // ensure the player has perms
+            if (!player.hasPermission("dmsm." + markerSet.getMarkerSetID())) {
+                player.sendMessage(Text.builder("You do not have permission to create sign markers of that kind")
+                        .color(TextColors.RED).build());
+                logger.info(
+                        "Unauthorized player "
+                        + player.getName()
+                        + " attempted to create a sign marker of type "
+                        + markerSet.getMarkerSetID()
+                );
+                event.setCancelled(true);
+                return;
+            }
+
+            // turn the rest of the text into a plot description
+            String markerDesc = "";
+            for (int i = 1; i < signText.size(); i++) {
+                markerDesc = markerDesc.concat(signText.get(i).toPlain() + " ");
+            }
+
+            Location<World> signLocation = sign.getLocation();
+            World world = signLocation.getExtent();
+
+            // create the marker
+            Marker createdMarker = markerSet.createMarker(
+                    null,
+                    markerDesc,
+                    world.getName(),
+                    signLocation.getX(),
+                    signLocation.getY(),
+                    signLocation.getZ(),
+                    markerIcon,
+                    true
+            );
+
+            if (createdMarker != null) {
+                String lbl = markerSet.getMarkerSetLabel();
+                player.sendMessage(Text.builder(lbl)
+                        .color(TextColors.AQUA)
+                        .append(Text.builder(" sign marker created").color(TextColors.GREEN).build())
+                        .build());
+                String markerPosAsString = signLocation.getPosition().toString();
+                logger.info(player.getName() + " created a " + lbl + " sign marker at " + markerPosAsString);
+                // make the sign fancy-colored
+                for (int i = 0; i < signText.size(); i++) {
+                    Text newText = signText.get(i).toBuilder()
+                            .style(TextStyles.BOLD)
+                            .color(TextColors.DARK_RED)
+                            .build();
+                    signData.setElement(i, newText);
+                }
+                // play some funky fresh effects
+                Vector3d effectPos = signLocation.getPosition().add(0.5, 0.5, 0.5);
+                player.playSound(SoundTypes.BLOCK_NOTE_GUITAR, effectPos, 1.3);
+                ParticleEffect effect = ParticleEffect.builder()
+                        .type(ParticleTypes.FIREWORKS)
+                        .quantity(50)
+                        .build();
+                player.spawnParticles(effect, effectPos);
+            }
+            else {
+                player.sendMessage(Text.builder("Could not create a sign marker")
+                        .color(TextColors.RED).build());
+                logger.error(player.getName() + " ran into an error creating a sign marker");
             }
         }
     }
@@ -184,17 +200,18 @@ public class DynmapSignMarker {
      */
     @Listener
     public void onBreakBlockEvent(ChangeBlockEvent.Break event) {
-        if (openPlotMarkerSet != null) {
-            // if the event is not player caused, we do nothing
-            Optional<Player> optPlayer = event.getCause().first(Player.class);
-            if (!optPlayer.isPresent()) {
-                return;
-            }
-            Player player = optPlayer.get();
-            // check if this block is related to a marker
-            for (Transaction<BlockSnapshot> transaction : event.getTransactions()) {
-                Vector3i blockPos = transaction.getFinal().getPosition();
-                for (Marker marker : openPlotMarkerSet.getMarkers()) {
+        // if the event is not player caused, we do nothing
+        Optional<Player> optPlayer = event.getCause().first(Player.class);
+        if (!optPlayer.isPresent()) {
+            return;
+        }
+        Player player = optPlayer.get();
+        // check if this block is related to a marker
+        for (Transaction<BlockSnapshot> transaction : event.getTransactions()) {
+            Vector3i blockPos = transaction.getFinal().getPosition();
+            for (SignMarkerSet signMarkerSet : configManager.getSignMarkerSets()) {
+                MarkerSet markerSet = signMarkerSet.getMarkerSet();
+                for (Marker marker : markerSet.getMarkers()) {
                     Vector3i markerPos = new Vector3i(
                             marker.getX(),
                             marker.getY(),
@@ -202,26 +219,27 @@ public class DynmapSignMarker {
                     );
                     // if we find a marker
                     if (blockPos.equals(markerPos)) {
-                        if (player.hasPermission("dmsm.removemarker.plot")) {
+                        String lbl = markerSet.getMarkerSetLabel();
+                        if (player.hasPermission("dmsm." + markerSet.getMarkerSetID())) {
                             marker.deleteMarker();
-                            player.sendMessage(Text.builder("Successfully removed marker")
+                            player.sendMessage(Text.builder("Successfully removed sign marker")
                                     .color(TextColors.GREEN)
                                     .build()
                             );
                             logger.info(
                                     "Player "
                                     + player.getName()
-                                    + " removed a marker at "
+                                    + " removed a "
+                                    + lbl
+                                    + " sign marker at "
                                     + markerPos.toString()
                             );
                             // play a fun sound
-                            player.playSound(SoundTypes.BLOCK_NOTE_BASS, markerPos.toDouble(),1.3);
+                            player.playSound(SoundTypes.BLOCK_NOTE_BASS, markerPos.toDouble(), 1.3);
                         }
                         else {
-                            player.sendMessage(Text.builder("You do not have permission to remove plot markers")
-                                    .color(TextColors.RED)
-                                    .build()
-                            );
+                            String msg = "You do not have permission to remove " + lbl + " sign markers";
+                            player.sendMessage(Text.builder(msg).color(TextColors.RED).build());
                             logger.error(
                                     "Unauthorized player "
                                     + player.getName()
