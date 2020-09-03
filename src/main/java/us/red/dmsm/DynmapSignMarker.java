@@ -171,14 +171,12 @@ public class DynmapSignMarker {
                         .build());
                 String markerPosAsString = signLocation.getPosition().toString();
                 logger.info(player.getName() + " created a " + lbl + " sign marker at " + markerPosAsString);
-                // make the sign fancy-colored
-                for (int i = 0; i < signText.size(); i++) {
-                    Text newText = signText.get(i).toBuilder()
-                            .style(TextStyles.BOLD)
-                            .color(TextColors.DARK_RED)
-                            .build();
-                    signData.setElement(i, newText);
-                }
+                // make the first row of the sign fancy-colored
+                signData.setElement(0,
+                        signText.get(0).toBuilder()
+                                .style(TextStyles.BOLD)
+                                .color(TextColors.DARK_RED)
+                                .build());
                 // play some funky fresh effects
                 Vector3d effectPos = signLocation.getPosition().add(0.5, 0.5, 0.5);
                 player.playSound(SoundTypes.BLOCK_NOTE_GUITAR, effectPos, 1.3);
